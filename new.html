@@ -1,0 +1,2236 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Полный дом</title>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; }
+
+  html, body {
+    height: 100%;
+    background-color: #337527;
+    background-image:
+      radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,0.35) 100%),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.22'/></svg>"),
+      repeating-linear-gradient(45deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px),
+      repeating-linear-gradient(-45deg, rgba(0,0,0,0.025) 0px, rgba(0,0,0,0.025) 1px, transparent 1px, transparent 3px);
+    background-blend-mode: multiply, overlay, normal, normal;
+    color: #fff;
+    font-family: system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  body.game-over-loss #app { filter: grayscale(80%) brightness(0.7); pointer-events: none; }
+
+  #app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 10px;
+    max-width: 520px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  #pauseOverlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 90;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+  #pauseOverlay.active { opacity: 1; }
+
+  .bot-area { position: relative; display: flex; flex-direction: column; gap: 6px; }
+
+  .score-row {
+    position: relative;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 10px; background: rgba(0,0,0,0.28);
+    border-radius: 14px; font-size: 17px; font-weight: 600;
+    gap: 8px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 6px rgba(0,0,0,0.25);
+  }
+  .score-row .label { opacity: 0.9; font-weight: 500; flex: 1; padding-left: 4px; }
+  .score-row .value { font-size: 20px; font-weight: 700; color: #ffdf6b; padding-right: 4px; }
+
+  .icon-btn {
+    width: 40px; height: 40px; flex: 0 0 40px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.3);
+    border: none; border-radius: 10px;
+    font-size: 20px; cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    color: #fff;
+    line-height: 1;
+  }
+  .icon-btn:hover  { background: rgba(0,0,0,0.45); }
+  .icon-btn:active { transform: scale(0.94); }
+
+  .bot-speech-bubble {
+    position: absolute; top: 55px; left: 10px; right: 10px;
+    background: #ffffff; color: #222; padding: 12px 14px;
+    border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    z-index: 50; display: flex; flex-direction: column; gap: 8px;
+    animation: popIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .bot-speech-bubble::before {
+    content: ''; position: absolute; top: -10px; left: 24px;
+    border-width: 0 10px 10px 10px; border-style: solid;
+    border-color: transparent transparent #ffffff transparent;
+  }
+  .bot-speech-text { font-size: 15px; font-weight: 700; color: #1a1a1a; }
+  .timer-container { display: flex; flex-direction: column; gap: 2px; }
+  .timer-info { display: flex; justify-content: space-between; font-size: 12px; color: #666; font-weight: 600; }
+  .timer-bar-bg { height: 6px; background: #e0e0e0; border-radius: 3px; overflow: hidden; }
+  .timer-bar-fill { height: 100%; background: #ff4336; width: 100%; transition: width 0.1s linear; }
+
+  /* Бабл кооператива — над карточкой ставящего игрока */
+  .finance-wrap { position: relative; }
+  .coop-bubble {
+    position: absolute; left: 0; right: 0; bottom: calc(100% + 14px);
+    background: #ffffff; color: #222; padding: 12px 14px;
+    border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    z-index: 50; display: flex; flex-direction: column; gap: 8px;
+    animation: popInUp 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .coop-bubble::after {
+    content: ''; position: absolute; bottom: -10px; left: 25%; margin-left: -10px;
+    border-width: 10px 10px 0 10px; border-style: solid;
+    border-color: #ffffff transparent transparent transparent;
+  }
+  .coop-bubble.for-p2::after { left: 75%; }
+
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.8) translateY(-10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes popInUp {
+    from { opacity: 0; transform: scale(0.8) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  #diceField { flex: 1; position: relative; min-height: 180px; }
+  .die {
+    position: absolute; width: 84px; height: 84px;
+    border-radius: 16px; padding: 13px;
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+    transition: transform 0.35s ease, top 0.35s ease, left 0.35s ease;
+  }
+  .die.white  { background: #fff; }
+  .die.blue   { background: #1e5fbf; }
+  .die.orange { background: #ef7a1a; }
+  .pip { border-radius: 50%; margin: 1.5px; }
+  .die.blue .pip   { background: #0a1f4d; }
+  .die.orange .pip { background: #ffd52e; }
+  .die.white .pip.pip-red    { background: #e02020; }
+  .die.white .pip.pip-green  { background: #45953A; }
+  .die.white .pip.pip-blue   { background: #1e5fbf; }
+  .pip.hidden { visibility: hidden; }
+
+  #die0 { top: 6%;  left: 10%;  transform: rotate(-8deg); }
+  #die1 { top: 34%; left: 52%;  transform: rotate(11deg); }
+  #die2 { top: 62%; left: 20%;  transform: rotate(-5deg); }
+
+  .bottom-section { display: flex; flex-direction: column; gap: 16px; margin-top: auto; }
+
+  .finance-row { display: flex; gap: 12px; width: 100%; }
+  .finance-card {
+    flex: 1; background: rgba(0,0,0,0.28); border-radius: 14px;
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; text-align: center;
+    position: relative;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 6px rgba(0,0,0,0.25);
+    transition: opacity 0.25s, box-shadow 0.25s, background 0.25s;
+  }
+  .finance-card .card-title { font-size: 14px; opacity: 0.85; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .finance-card .card-value { font-size: 22px; font-weight: 800; color: #ffdf6b; }
+
+  /* Подсветка игрока, чей сейчас ход (кооператив) */
+  .finance-card.active-turn {
+    background: rgba(0,0,0,0.42);
+    box-shadow: 0 0 0 3px #FFC60C, 0 0 18px rgba(255,198,12,0.55);
+  }
+  body.coop-mode .finance-card:not(.active-turn) { opacity: 0.55; }
+
+  .money-float {
+    position: absolute;
+    left: 50%; top: 0;
+    transform: translateX(-50%);
+    font-size: 20px; font-weight: 900;
+    pointer-events: none;
+    z-index: 10;
+    white-space: nowrap;
+    animation: floatUp 1.4s ease-out forwards;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  }
+  .money-float.plus  { color: #7CFF5C; }
+  .money-float.minus { color: #FF5252; }
+  @keyframes floatUp {
+    0%   { opacity: 0; transform: translate(-50%, 8px)   scale(0.85); }
+    15%  { opacity: 1; transform: translate(-50%, 0px)   scale(1.1);  }
+    60%  { opacity: 1; transform: translate(-50%, -30px) scale(1);    }
+    100% { opacity: 0; transform: translate(-50%, -60px) scale(0.9);  }
+  }
+
+  .btn-row { display: flex; gap: 12px; }
+  .btn {
+    flex: 1; border: none; border-radius: 14px; padding: 16px 10px;
+    font-size: 17px; font-weight: 700; color: #fff; cursor: pointer;
+    transition: transform 0.1s, background 0.2s, opacity 0.2s;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn.primary { background: #FFC60C; color: #2a1a00; }
+  .btn.primary:hover { background: #FFEE0C; }
+  .btn.danger { background: #FF4336; color: #fff; opacity: 0.45; }
+  .btn.danger.active-override {
+    opacity: 1;
+    box-shadow: 0 0 16px rgba(255, 67, 54, 0.8);
+    animation: pulse 1s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 12px rgba(255,67,54,0.6); }
+    50%     { box-shadow: 0 0 24px rgba(255,67,54,1); }
+  }
+
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 16px; backdrop-filter: blur(3px);
+  }
+  .modal-bg.hidden { display: none; }
+  .modal {
+    background: #2a5f20; border-radius: 18px; padding: 20px;
+    width: 100%; max-width: 380px; box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+    margin: auto; position: relative;
+  }
+  .modal h2 { font-size: 19px; margin-bottom: 14px; text-align: center; }
+
+  .rules-modal {
+    max-width: 440px;
+    max-height: 85vh;
+    padding: 22px 0 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .rules-modal .r-title {
+    font-size: 22px; font-weight: 900; text-align: center;
+    margin-bottom: 14px; color: #ffdf6b;
+    letter-spacing: 0.5px;
+    padding: 0 20px;
+  }
+  .rules-modal .r-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 0 20px 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .rules-modal .r-h {
+    font-size: 17px; font-weight: 800; margin: 14px 0 6px;
+    color: #ffdf6b;
+  }
+  .rules-modal p { font-size: 14.5px; line-height: 1.55; margin: 4px 0; }
+  .rules-modal ul { padding-left: 20px; margin: 4px 0; }
+  .rules-modal li { font-size: 14.5px; line-height: 1.55; margin: 2px 0; }
+  .rules-modal b { color: #fff; }
+  .rules-modal .r-small {
+    font-size: 12px; opacity: 0.75; text-align: center;
+    margin-top: 18px; font-style: italic;
+  }
+  .rules-modal .r-footer {
+    flex: 0 0 auto;
+    padding: 12px 20px 20px;
+    background: #2a5f20;
+  }
+  .rules-modal .r-close {
+    display: block; width: 100%; padding: 14px;
+    background: #FFC60C; color: #2a1a00; border: none; border-radius: 12px;
+    font-size: 16px; font-weight: 800; cursor: pointer;
+  }
+  .rules-modal .r-close:hover { background: #FFEE0C; }
+
+  .choice {
+    display: block; width: 100%; padding: 14px; margin-bottom: 8px;
+    background: #3d8a2e; color: #fff; border: none; border-radius: 12px;
+    font-size: 16px; font-weight: 600; text-align: left; cursor: pointer;
+  }
+  .choice:active { background: #4aa338; }
+  .modal label { display: block; margin: 12px 0 6px; font-size: 15px; }
+  .modal select, .modal input {
+    width: 100%; padding: 12px; background: #1e4a15; color: #fff;
+    border: 1px solid #4aa338; border-radius: 10px; font-size: 16px;
+  }
+
+  .number-input-wrapper { display: flex; align-items: center; gap: 8px; }
+  .num-btn {
+    background: #FFC60C; color: #2a1a00; border: none; border-radius: 10px;
+    width: 44px; height: 44px; font-size: 22px; font-weight: bold;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s;
+  }
+  .num-btn:hover { background: #FFEE0C; }
+  .number-input-wrapper input { text-align: center; font-weight: bold; font-size: 18px; }
+
+  .num-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+  .num-grid button {
+    position: relative;
+    padding: 14px 0; background: #3d8a2e; color: #fff;
+    border: 2px solid transparent; border-radius: 10px;
+    font-size: 17px; font-weight: 700; cursor: pointer;
+  }
+  .num-grid button.sel {
+    background: #FFC60C; color: #2a1a00; border-color: #FFEE0C;
+  }
+  .num-grid button .cnt-badge {
+    position: absolute; top: -6px; right: -6px;
+    min-width: 22px; height: 22px; padding: 0 5px;
+    background: #FF4336; color: #fff;
+    border-radius: 11px; font-size: 13px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    pointer-events: none;
+  }
+
+  .reset-combo-btn {
+    display: block; width: 100%; margin-top: 10px;
+    padding: 12px; background: #b8332b; color: #fff;
+    border: none; border-radius: 10px;
+    font-size: 15px; font-weight: 700; cursor: pointer;
+    transition: background 0.2s;
+  }
+  .reset-combo-btn:hover { background: #d13a31; }
+
+  .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .modal-actions button {
+    flex: 1; padding: 14px; border-radius: 10px;
+    font-size: 16px; font-weight: 700; border: none; cursor: pointer;
+  }
+  .cancel { background: rgba(255,255,255,0.18); color: #fff; }
+  .confirm { background: #FFC60C; color: #2a1a00; }
+  .confirm:hover { background: #FFEE0C; }
+
+  #toast {
+    position: fixed; left: 50%; top: 15%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.88); color: #fff; padding: 12px 22px;
+    border-radius: 12px; font-size: 16px; font-weight: 600;
+    text-align: center; max-width: 90%; z-index: 200;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s, top 0.3s;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  #toast.show { opacity: 1; top: 18%; }
+
+  /* ═══ ОБЩИЙ ФОН ДЛЯ ЭКРАНОВ ═══ */
+  .screen {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    padding: 24px; z-index: 300;
+    background-color: #337527;
+    background-image:
+      radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,0.35) 100%),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.22'/></svg>"),
+      repeating-linear-gradient(45deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px),
+      repeating-linear-gradient(-45deg, rgba(0,0,0,0.025) 0px, rgba(0,0,0,0.025) 1px, transparent 1px, transparent 3px);
+    background-blend-mode: multiply, overlay, normal, normal;
+  }
+  .screen.hidden { display: none; }
+
+  .screen h1 { font-size: 32px; margin-bottom: 28px; letter-spacing: 2px; text-shadow: 0 2px 10px rgba(0,0,0,0.4); text-align: center; }
+  .screen h2 { font-size: 22px; margin-bottom: 22px; letter-spacing: 1px; text-align: center; color: #ffdf6b; }
+
+  .input-group { width: 100%; max-width: 320px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .input-group label { font-size: 14px; opacity: 0.9; }
+  .screen input {
+    width: 100%; padding: 14px; background: rgba(0,0,0,0.35); color: #fff;
+    border: 1px solid #4aa338; border-radius: 12px; font-size: 16px; text-align: center;
+  }
+  .screen button.start-btn {
+    width: 100%; max-width: 320px; padding: 16px; margin-top: 10px;
+    background: #FFC60C; color: #2a1a00; border: none; border-radius: 12px;
+    font-size: 18px; font-weight: 800; cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  }
+  .screen button.start-btn:hover { background: #FFEE0C; }
+  .screen button.start-btn:active { transform: scale(0.98); }
+
+  /* ═══ КНОПКИ ВЫБОРА РЕЖИМА ═══ */
+  .mode-btn {
+    width: 100%; max-width: 320px;
+    padding: 22px 20px;
+    margin-bottom: 14px;
+    background: #3d8a2e;
+    color: #fff;
+    border: 2px solid #4aa338;
+    border-radius: 16px;
+    font-size: 18px;
+    font-weight: 800;
+    cursor: pointer;
+    text-align: left;
+    transition: transform 0.1s, background 0.2s, border-color 0.2s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .mode-btn:hover { background: #4aa338; border-color: #5cc044; }
+  .mode-btn:active { transform: scale(0.98); }
+  .mode-btn .mode-icon { font-size: 32px; line-height: 1; }
+  .mode-btn .mode-info { display: flex; flex-direction: column; gap: 2px; }
+  .mode-btn .mode-title { font-size: 18px; font-weight: 800; }
+  .mode-btn .mode-sub { font-size: 13px; font-weight: 500; opacity: 0.8; }
+
+  .back-btn {
+    margin-top: 16px;
+    padding: 10px 22px;
+    background: rgba(0,0,0,0.35);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .back-btn:hover { background: rgba(0,0,0,0.5); }
+
+  #secretBtn {
+    width: 100%;
+    max-width: 320px;
+    margin-top: 14px;
+    padding: 6px;
+    background: transparent;
+    border: none;
+    color: rgba(255,255,255,0.08);
+    font-size: 11px;
+    letter-spacing: 3px;
+    cursor: default;
+    transition: color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  #secretBtn:active { color: rgba(255,255,255,0.25); }
+  #secretBtn.revealed { color: rgba(255,220,80,0.85); cursor: pointer; }
+
+  #endOverlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    z-index: 400; padding: 24px; text-align: center;
+  }
+  #endOverlay.hidden { display: none; }
+  #endTitle { font-size: 32px; font-weight: 900; margin-bottom: 16px; line-height: 1.3; }
+  #endSubtitle { font-size: 18px; margin-bottom: 28px; opacity: 0.9; }
+  #endOverlay button {
+    padding: 16px 32px; background: #FFC60C; color: #2a1a00;
+    border: none; border-radius: 12px; font-size: 18px; font-weight: 800; cursor: pointer;
+  }
+  #endOverlay button:hover { background: #FFEE0C; }
+
+  #pauseModal .pause-buttons {
+    display: flex; flex-direction: column; gap: 10px; margin-top: 16px;
+  }
+  #pauseModal .pause-buttons button {
+    width: 100%; padding: 15px; border-radius: 12px; border: none;
+    font-size: 16px; font-weight: 800; cursor: pointer;
+    transition: transform 0.1s, background 0.2s;
+  }
+  #pauseModal .pause-buttons button:active { transform: scale(0.97); }
+  #pauseModal .pause-resume { background: #FFC60C; color: #2a1a00; }
+  #pauseModal .pause-resume:hover { background: #FFEE0C; }
+  #pauseModal .pause-menu { background: #b8332b; color: #fff; }
+  #pauseModal .pause-menu:hover { background: #d13a31; }
+
+  #cheatPanel {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 280px; background: #1e1e1e;
+    border: 2px solid #FFC60C; border-radius: 14px; padding: 14px;
+    z-index: 500; box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+    display: none; flex-direction: column; gap: 8px;
+  }
+  #cheatPanel.open { display: flex; }
+  #cheatPanel h3 {
+    font-size: 14px; text-align: center; color: #FFC60C;
+    margin-bottom: 4px; letter-spacing: 1px;
+  }
+  #cheatPanel .cheat-label { font-size: 12px; color: #ccc; margin-top: 4px; }
+  #cheatPanel .cheat-dice-row {
+    display: flex; gap: 6px; justify-content: space-between;
+  }
+  #cheatPanel .cheat-die-select {
+    flex: 1; padding: 8px 4px; background: #2a2a2a; color: #FFC60C;
+    border: 1px solid #FFC60C; border-radius: 8px;
+    font-size: 15px; font-weight: 800; text-align: center; cursor: pointer;
+  }
+  #cheatPanel .cheat-die-select:focus { outline: none; border-color: #FFEE0C; }
+  .cheat-btn {
+    width: 100%; padding: 10px; border: none; border-radius: 8px;
+    font-size: 13px; font-weight: 700; cursor: pointer; text-align: center;
+    color: #fff; transition: transform 0.1s, filter 0.15s;
+  }
+  .cheat-btn:hover { filter: brightness(1.15); }
+  .cheat-btn:active { transform: scale(0.97); }
+  .cheat-btn.apply { background: #2ea82e; }
+  .cheat-btn.reset { background: #5a5a5a; }
+  .cheat-btn.close { background: #b8332b; }
+
+  #cheatBackdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    z-index: 499; display: none;
+  }
+  #cheatBackdrop.open { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ═══ ЭКРАН 1: ВЫБОР РЕЖИМА ═══ -->
+<div id="modeScreen" class="screen">
+  <h1>🎲 ПОЛНЫЙ ДОМ</h1>
+  <button class="mode-btn" onclick="chooseMode('bot')">
+    <span class="mode-icon">🤖</span>
+    <span class="mode-info">
+      <span class="mode-title">С ботом</span>
+      <span class="mode-sub">Один против бота</span>
+    </span>
+  </button>
+  <button class="mode-btn" onclick="chooseMode('coop')">
+    <span class="mode-icon">👥</span>
+    <span class="mode-info">
+      <span class="mode-title">Кооператив</span>
+      <span class="mode-sub">Игра с другом по очереди</span>
+    </span>
+  </button>
+</div>
+
+<!-- ═══ ЭКРАН 2: НАСТРОЙКА (С БОТОМ) ═══ -->
+<div id="startScreen" class="screen hidden">
+  <h1>🤖 С БОТОМ</h1>
+  <div class="input-group">
+    <label>Имя игрока</label>
+    <input id="nameInput" placeholder="Ваше имя" maxlength="12" value="Игрок">
+  </div>
+  <div class="input-group">
+    <label>Банк игры</label>
+    <div class="number-input-wrapper">
+      <button class="num-btn" onclick="stepBank(-10)">-</button>
+      <input id="bankInput" type="number" placeholder="Денег в банке" value="200" min="20">
+      <button class="num-btn" onclick="stepBank(10)">+</button>
+    </div>
+  </div>
+  <button class="start-btn" onclick="startGame('bot')">Начать игру</button>
+  <button class="back-btn" onclick="backToMode()">← Назад</button>
+  <button id="secretBtn" onclick="secretTap()">•••</button>
+</div>
+
+<!-- ═══ ЭКРАН 3: НАСТРОЙКА (КООПЕРАТИВ) ═══ -->
+<div id="coopScreen" class="screen hidden">
+  <h1>👥 КООПЕРАТИВ</h1>
+  <div class="input-group">
+    <label>Имя Игрока 1</label>
+    <input id="coopName1" placeholder="Игрок 1" maxlength="12" value="Игрок 1">
+  </div>
+  <div class="input-group">
+    <label>Имя Игрока 2</label>
+    <input id="coopName2" placeholder="Игрок 2" maxlength="12" value="Игрок 2">
+  </div>
+  <div class="input-group">
+    <label>Банк игры</label>
+    <div class="number-input-wrapper">
+      <button class="num-btn" onclick="stepBankCoop(-10)">-</button>
+      <input id="coopBankInput" type="number" placeholder="Денег в банке" value="200" min="20">
+      <button class="num-btn" onclick="stepBankCoop(10)">+</button>
+    </div>
+  </div>
+  <button class="start-btn" onclick="startGame('coop')">Начать игру</button>
+  <button class="back-btn" onclick="backToMode()">← Назад</button>
+</div>
+
+<div id="app" style="display:none;">
+  <div class="bot-area">
+    <div class="score-row" id="botRow">
+      <button class="icon-btn" id="rulesBtn" onclick="openRules()" title="Правила">📃</button>
+      <span class="label" id="opponentLabel">🤖 Бот</span>
+      <span class="value" id="botMoney">15</span>
+      <button class="icon-btn" id="pauseBtn" onclick="onPauseClick()" title="Пауза">⏸️</button>
+    </div>
+    <div id="botBubble" class="bot-speech-bubble" style="display:none;">
+      <div id="botSpeechText" class="bot-speech-text">Бот думает...</div>
+      <div class="timer-container">
+        <div class="timer-info">
+          <span>Осталось времени:</span>
+          <span id="botTimerSec">10 сек</span>
+        </div>
+        <div class="timer-bar-bg">
+          <div id="botTimerBar" class="timer-bar-fill"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="diceField">
+    <div class="die white"  id="die0"></div>
+    <div class="die blue"   id="die1"></div>
+    <div class="die orange" id="die2"></div>
+  </div>
+
+  <div class="bottom-section">
+    <div class="finance-wrap">
+      <!-- Бабл кооператива: появляется над карточкой ставящего игрока -->
+      <div id="coopBubble" class="coop-bubble" style="display:none;">
+        <div id="coopSpeechText" class="bot-speech-text">Ставка...</div>
+        <div class="timer-container">
+          <div class="timer-info">
+            <span>Можно перебить:</span>
+            <span id="coopTimerSec">5 сек</span>
+          </div>
+          <div class="timer-bar-bg">
+            <div id="coopTimerBar" class="timer-bar-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="finance-row">
+        <div class="finance-card" id="bankCard">
+          <span class="card-title">💰 Банк</span>
+          <span class="card-value" id="bankMoney">200</span>
+        </div>
+        <div class="finance-card" id="playerCard">
+          <span class="card-title" id="playerLabel">🙋 Игрок</span>
+          <span class="card-value" id="playerMoney">15</span>
+        </div>
+        <div class="finance-card" id="p2Card" style="display:none;">
+          <span class="card-title" id="p2Label">🙋 Игрок 2</span>
+          <span class="card-value" id="p2Money">15</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn primary" id="betBtn" onclick="openBetMenu()">Ставка</button>
+      <button class="btn danger"  id="overrideBtn" onclick="onOverrideClick()">Перебив</button>
+    </div>
+  </div>
+</div>
+
+<div id="pauseOverlay"></div>
+
+<div class="modal-bg hidden" id="betModal">
+  <div class="modal" id="betModalContent"></div>
+</div>
+
+<div class="modal-bg hidden" id="overrideModal">
+  <div class="modal" id="overrideModalContent">
+    <div class="timer-container" style="margin-bottom: 14px;">
+      <div class="timer-info" style="color:#fff;">
+        <span>Время на решение:</span>
+        <span id="overrideTimerSec">10 сек</span>
+      </div>
+      <div class="timer-bar-bg">
+        <div id="overrideTimerBar" class="timer-bar-fill"></div>
+      </div>
+    </div>
+    <div id="overrideBody"></div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="playerBetModal">
+  <div class="modal" id="playerBetModalContent"></div>
+</div>
+
+<div class="modal-bg hidden" id="rulesModal">
+  <div class="modal rules-modal" id="rulesModalContent"></div>
+</div>
+
+<div class="modal-bg hidden" id="pauseModal">
+  <div class="modal">
+    <h2>⏸️ Пауза</h2>
+    <div class="pause-buttons">
+      <button class="pause-resume" onclick="closePauseModal()">▶ Продолжить</button>
+      <button class="pause-menu" onclick="exitToMainMenu()">🏠 Выйти в главное меню</button>
+    </div>
+  </div>
+</div>
+
+<div id="endOverlay" class="hidden">
+  <div id="endTitle">Победа!</div>
+  <div id="endSubtitle">Описание результата</div>
+  <button onclick="restartGame()">Играть снова</button>
+</div>
+
+<div id="toast"></div>
+
+<div id="cheatBackdrop" onclick="closeCheat()"></div>
+<div id="cheatPanel">
+  <h3>🎲 ЧИТ: КОМБИНАЦИЯ</h3>
+  <div class="cheat-label">Значения кубиков (1–6):</div>
+  <div class="cheat-dice-row">
+    <select class="cheat-die-select" id="cheatDie0">
+      <option>1</option><option>2</option><option>3</option>
+      <option>4</option><option>5</option><option>6</option>
+    </select>
+    <select class="cheat-die-select" id="cheatDie1">
+      <option>1</option><option>2</option><option>3</option>
+      <option>4</option><option>5</option><option>6</option>
+    </select>
+    <select class="cheat-die-select" id="cheatDie2">
+      <option>1</option><option>2</option><option>3</option>
+      <option>4</option><option>5</option><option>6</option>
+    </select>
+  </div>
+  <button class="cheat-btn apply" onclick="cheatApplyCombo()">✅ Применить (следующий бросок)</button>
+  <button class="cheat-btn reset" onclick="cheatResetCombo()">↺ Сбросить (случайно)</button>
+  <button class="cheat-btn close" onclick="closeCheat()">✖ Закрыть</button>
+</div>
+
+<script>
+/* ═══════════ СКРЫТАЯ КНОПКА ═══════════ */
+let secretTaps = 0;
+let secretTapTimer = null;
+
+function secretTap() {
+  secretTaps++;
+  const btn = document.getElementById('secretBtn');
+  btn.style.color = 'rgba(255,255,255,0.4)';
+  setTimeout(() => {
+    if (!btn.classList.contains('revealed')) btn.style.color = '';
+  }, 120);
+
+  clearTimeout(secretTapTimer);
+  secretTapTimer = setTimeout(() => { secretTaps = 0; }, 1500);
+
+  if (secretTaps >= 3) {
+    secretTaps = 0;
+    clearTimeout(secretTapTimer);
+    openCheat();
+  }
+}
+
+function openCheat() {
+  document.getElementById('cheatBackdrop').classList.add('open');
+  document.getElementById('cheatPanel').classList.add('open');
+  const btn = document.getElementById('secretBtn');
+  if (btn) {
+    btn.classList.add('revealed');
+    btn.textContent = '🎲 ЧИТ-МЕНЮ ОТКРЫТО';
+    setTimeout(() => {
+      btn.classList.remove('revealed');
+      btn.textContent = '•••';
+      btn.style.color = '';
+    }, 2000);
+  }
+}
+
+function closeCheat() {
+  document.getElementById('cheatBackdrop').classList.remove('open');
+  document.getElementById('cheatPanel').classList.remove('open');
+}
+
+function cheatApplyCombo() {
+  const d0 = parseInt(document.getElementById('cheatDie0').value);
+  const d1 = parseInt(document.getElementById('cheatDie1').value);
+  const d2 = parseInt(document.getElementById('cheatDie2').value);
+  cheatCombo = [d0, d1, d2];
+  toast(`🎲 Следующий бросок: ${d0}-${d1}-${d2}`, 3000);
+  closeCheat();
+}
+
+function cheatResetCombo() {
+  cheatCombo = null;
+  toast('🎲 Комбинация сброшена (случайный бросок)', 2000);
+  closeCheat();
+}
+
+/* ═══════════ ЗВУК ═══════════ */
+let audioCtx = null;
+function ensureAudioCtx() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { audioCtx = null; }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  return audioCtx;
+}
+
+function playNote(ctx, { start, freq, dur, type = 'sine', vol = 0.15, vibrato = 0 }) {
+  const osc = ctx.createOscillator();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, start);
+  let lfo = null, lfoGain = null;
+  if (vibrato > 0) {
+    lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 30;
+    lfoGain = ctx.createGain(); lfoGain.gain.value = vibrato;
+    lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+  }
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(vol, start + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start(start); osc.stop(start + dur + 0.02);
+  if (lfo) { lfo.start(start); lfo.stop(start + dur + 0.02); }
+}
+
+function playDiceSound(intensity = 1) {
+  const ctx = ensureAudioCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  const duration = 0.08;
+  const bufferSize = Math.floor(ctx.sampleRate * duration);
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2.5);
+  const noise = ctx.createBufferSource(); noise.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass'; filter.frequency.value = 1200 + Math.random() * 800; filter.Q.value = 1.2;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.18 * intensity, now);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+  noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+  noise.start(now); noise.stop(now + duration);
+  const osc = ctx.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(180 + Math.random() * 60, now);
+  osc.frequency.exponentialRampToValueAtTime(80, now + 0.06);
+  const oscGain = ctx.createGain();
+  oscGain.gain.setValueAtTime(0.12 * intensity, now);
+  oscGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+  osc.connect(oscGain); oscGain.connect(ctx.destination);
+  osc.start(now); osc.stop(now + 0.08);
+}
+
+function playDiceFinalSound() {
+  const ctx = ensureAudioCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  [0, 0.06, 0.13].forEach((delay, i) => {
+    const t = now + delay;
+    const bufferSize = Math.floor(ctx.sampleRate * 0.1);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let j = 0; j < bufferSize; j++) data[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / bufferSize, 2.5);
+    const noise = ctx.createBufferSource(); noise.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass'; filter.frequency.value = 900 + Math.random() * 600; filter.Q.value = 1.5;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.22 - i * 0.03, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+    noise.start(t); noise.stop(t + 0.1);
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(160 + Math.random() * 40, t);
+    osc.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+    const oscGain = ctx.createGain();
+    oscGain.gain.setValueAtTime(0.15, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    osc.connect(oscGain); oscGain.connect(ctx.destination);
+    osc.start(t); osc.stop(t + 0.1);
+  });
+}
+
+function playRobotBeep() {
+  const ctx = ensureAudioCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  [{ t: 0.00, freq: 880, dur: 0.08 }, { t: 0.10, freq: 660, dur: 0.08 }, { t: 0.20, freq: 990, dur: 0.10 }]
+    .forEach(({ t, freq, dur }) => playNote(ctx, { start: now + t, freq, dur, type: 'square', vol: 0.14, vibrato: 20 }));
+}
+
+function playVictorySound() {
+  const ctx = ensureAudioCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  [{ t: 0.00, freq: 523, dur: 0.18 }, { t: 0.13, freq: 659, dur: 0.18 }, { t: 0.26, freq: 784, dur: 0.18 }, { t: 0.39, freq: 1047, dur: 0.45 }]
+    .forEach(n => {
+      playNote(ctx, { start: now + n.t, freq: n.freq, dur: n.dur, type: 'triangle', vol: 0.18 });
+      playNote(ctx, { start: now + n.t, freq: n.freq * 2, dur: n.dur * 0.8, type: 'sine', vol: 0.06 });
+    });
+}
+
+function playLoseSound() {
+  const ctx = ensureAudioCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  [{ t: 0.00, freq: 440, dur: 0.30 }, { t: 0.22, freq: 392, dur: 0.30 }, { t: 0.44, freq: 349, dur: 0.30 }, { t: 0.66, freq: 294, dur: 0.70 }]
+    .forEach(n => {
+      playNote(ctx, { start: now + n.t, freq: n.freq, dur: n.dur, type: 'sawtooth', vol: 0.12 });
+      playNote(ctx, { start: now + n.t, freq: n.freq / 2, dur: n.dur, type: 'sine', vol: 0.08 });
+    });
+}
+
+function playDemonSound() {
+  const ctx = ensureAudioCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  const drone = ctx.createOscillator();
+  drone.type = 'sawtooth';
+  drone.frequency.setValueAtTime(220, now);
+  drone.frequency.exponentialRampToValueAtTime(55, now + 1.2);
+  const droneFilter = ctx.createBiquadFilter();
+  droneFilter.type = 'lowpass';
+  droneFilter.frequency.setValueAtTime(800, now);
+  droneFilter.frequency.exponentialRampToValueAtTime(200, now + 1.2);
+  const droneGain = ctx.createGain();
+  droneGain.gain.setValueAtTime(0.0001, now);
+  droneGain.gain.exponentialRampToValueAtTime(0.18, now + 0.1);
+  droneGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+  drone.connect(droneFilter); droneFilter.connect(droneGain); droneGain.connect(ctx.destination);
+  drone.start(now); drone.stop(now + 1.25);
+  [0.05, 0.25, 0.45].forEach((t, i) => {
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    const f0 = 160 - i * 20;
+    osc.frequency.setValueAtTime(f0, now + t);
+    osc.frequency.exponentialRampToValueAtTime(40, now + t + 0.15);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now + t);
+    gain.gain.exponentialRampToValueAtTime(0.22, now + t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + t + 0.18);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(now + t); osc.stop(now + t + 0.2);
+  });
+}
+
+function playJackpotSound() {
+  const ctx = ensureAudioCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  [{ t: 0.00, freq: 523 }, { t: 0.08, freq: 659 }, { t: 0.16, freq: 784 }, { t: 0.24, freq: 1047 }, { t: 0.32, freq: 1319 }, { t: 0.40, freq: 1568 }]
+    .forEach(n => {
+      playNote(ctx, { start: now + n.t, freq: n.freq, dur: 0.22, type: 'triangle', vol: 0.16 });
+      playNote(ctx, { start: now + n.t, freq: n.freq * 2, dur: 0.18, type: 'sine', vol: 0.06 });
+    });
+  [523, 659, 784, 1047, 1319].forEach(freq => playNote(ctx, { start: now + 0.62, freq, dur: 1.4, type: 'triangle', vol: 0.14 }));
+  for (let i = 0; i < 8; i++) {
+    const t = 0.62 + Math.random() * 0.9;
+    playNote(ctx, { start: now + t, freq: 1200 + Math.random() * 1500, dur: 0.1, type: 'sine', vol: 0.05 });
+  }
+}
+
+function playConfusedSound() {
+  const ctx = ensureAudioCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  playNote(ctx, { start: now + 0.00, freq: 500, dur: 0.15, type: 'triangle', vol: 0.15 });
+  playNote(ctx, { start: now + 0.10, freq: 700, dur: 0.18, type: 'triangle', vol: 0.15 });
+  playNote(ctx, { start: now + 0.22, freq: 480, dur: 0.20, type: 'triangle', vol: 0.15 });
+  playNote(ctx, { start: now + 0.55, freq: 420, dur: 0.12, type: 'triangle', vol: 0.14 });
+  playNote(ctx, { start: now + 0.64, freq: 550, dur: 0.14, type: 'triangle', vol: 0.14 });
+  playNote(ctx, { start: now + 0.76, freq: 360, dur: 0.25, type: 'triangle', vol: 0.14 });
+}
+
+/* ═══════════ СОСТОЯНИЕ ═══════════ */
+/*
+  Режим 'bot':  player — человек, bot — бот.
+  Режим 'coop': player — Игрок 1, bot — Игрок 2 (тот же объект используется как второй игрок).
+  state.turn — чей сейчас ход ставки ('player' | 'bot').
+  state.awaiting (coop) — бабл со ставкой показан, второй игрок может перебить.
+*/
+const state = {
+  mode: 'bot',
+  bank: 200,
+  player: { name: 'Игрок', money: 15, debt: 0 },
+  bot:    { name: 'Бот',   money: 15, debt: 0 },
+  dice: [1, 2, 3],
+  colors: ['white','blue','orange'],
+  botBet: null,
+  playerBet: null,
+  override: null,
+  botOverride: null,
+  turn: 'player',
+  gameOver: false,
+  locked: false,
+  paused: false,
+  rulesOpen: false,
+  awaiting: false
+};
+
+let cheatCombo = null;
+
+const PIP_MAP = {
+  1: [4], 2: [0,8], 3: [0,4,8],
+  4: [0,2,6,8], 5: [0,2,4,6,8], 6: [0,2,3,5,6,8]
+};
+
+const WHITE_PIP_COLORS = {
+  1: 'pip-red', 2: 'pip-green', 3: 'pip-blue',
+  4: 'pip-blue', 5: 'pip-green', 6: 'pip-red'
+};
+
+let botTimerId = null;
+let overrideTimerId = null;
+let playerBetTimerId = null;
+let toastTimerId = null;
+
+const pauseState = {
+  botRemaining: 0, botTotal: 0, botOnExpire: null,
+  overrideRemaining: 0, overrideTotal: 0, overrideOnExpire: null,
+  playerBetRemaining: 0, playerBetTotal: 0, playerBetOnExpire: null,
+  toastRemaining: 0, toastActive: false
+};
+
+/* ═══════════ ВЫБОР РЕЖИМА ═══════════ */
+function chooseMode(mode) {
+  ensureAudioCtx();
+  document.getElementById('modeScreen').classList.add('hidden');
+  if (mode === 'bot') {
+    document.getElementById('startScreen').classList.remove('hidden');
+  } else {
+    document.getElementById('coopScreen').classList.remove('hidden');
+  }
+}
+
+function backToMode() {
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('coopScreen').classList.add('hidden');
+  document.getElementById('modeScreen').classList.remove('hidden');
+}
+
+function stepBank(val) {
+  const inp = document.getElementById('bankInput');
+  let current = parseInt(inp.value) || 200;
+  current = Math.max(20, current + val);
+  inp.value = current;
+}
+
+function stepBankCoop(val) {
+  const inp = document.getElementById('coopBankInput');
+  let current = parseInt(inp.value) || 200;
+  current = Math.max(20, current + val);
+  inp.value = current;
+}
+
+/* Раскладка интерфейса под режим */
+function applyModeLayout() {
+  const coop = state.mode === 'coop';
+  document.body.classList.toggle('coop-mode', coop);
+  document.getElementById('bankCard').style.display = coop ? 'none' : '';
+  document.getElementById('p2Card').style.display   = coop ? '' : 'none';
+  document.getElementById('opponentLabel').textContent = coop ? '💰 Банк' : '🤖 Бот';
+  document.getElementById('playerLabel').textContent = '🙋 ' + state.player.name;
+  document.getElementById('p2Label').textContent     = '🙋 ' + state.bot.name;
+}
+
+/* ═══════════ СТАРТ ═══════════ */
+function startGame(mode) {
+  ensureAudioCtx();
+  state.mode = mode;
+
+  if (mode === 'bot') {
+    state.player.name = document.getElementById('nameInput').value || 'Игрок';
+    state.bot.name = 'Бот';
+    state.bank = parseInt(document.getElementById('bankInput').value) || 200;
+  } else {
+    state.player.name = document.getElementById('coopName1').value || 'Игрок 1';
+    state.bot.name = document.getElementById('coopName2').value || 'Игрок 2';
+    state.bank = parseInt(document.getElementById('coopBankInput').value) || 200;
+  }
+
+  state.player.money = 15;
+  state.bot.money = 15;
+  state.player.debt = 0;
+  state.bot.debt = 0;
+  state.gameOver = false;
+  state.botBet = null;
+  state.playerBet = null;
+  state.override = null;
+  state.botOverride = null;
+  state.turn = 'player';
+  state.locked = false;
+  state.paused = false;
+  state.rulesOpen = false;
+  state.awaiting = false;
+  cheatCombo = null;
+
+  state.dice = [1,2,3].map(() => 1 + Math.floor(Math.random()*6));
+
+  document.getElementById('modeScreen').classList.add('hidden');
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('coopScreen').classList.add('hidden');
+  document.getElementById('app').style.display = 'flex';
+
+  applyModeLayout();
+  hideBotBubble();
+
+  document.body.classList.remove('game-over-loss');
+  document.getElementById('endOverlay').classList.add('hidden');
+  document.getElementById('pauseBtn').textContent = '⏸️';
+  document.getElementById('pauseBtn').title = 'Пауза';
+  document.getElementById('pauseOverlay').classList.remove('active');
+  document.getElementById('pauseModal').classList.add('hidden');
+
+  renderDice(state.dice);
+  randomizeDicePositions();
+  updateUI();
+
+  if (mode === 'coop') {
+    toast(`Ход ${state.player.name}!`, 5000);
+  } else {
+    toast(`Первый ход за вами!`, 5000);
+  }
+}
+
+function restartGame() {
+  clearInterval(botTimerId);
+  clearInterval(overrideTimerId);
+  clearInterval(playerBetTimerId);
+  clearTimeout(toastTimerId);
+  botTimerId = overrideTimerId = playerBetTimerId = toastTimerId = null;
+
+  pauseState.botRemaining = pauseState.overrideRemaining = pauseState.playerBetRemaining = pauseState.toastRemaining = 0;
+  pauseState.toastActive = false;
+  state.awaiting = false;
+
+  hideBotBubble();
+  document.querySelectorAll('.modal-bg').forEach(m => m.classList.add('hidden'));
+  document.getElementById('toast').classList.remove('show');
+  document.getElementById('pauseOverlay').classList.remove('active');
+
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('endOverlay').classList.add('hidden');
+  document.body.classList.remove('game-over-loss');
+  document.body.classList.remove('coop-mode');
+
+  // Возврат к выбору режима
+  document.getElementById('modeScreen').classList.remove('hidden');
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('coopScreen').classList.add('hidden');
+}
+
+/* ═══════════ КУБИКИ ═══════════ */
+function renderDice(values) {
+  values.forEach((v, i) => {
+    const die = document.getElementById('die' + i);
+    const isWhite = die.classList.contains('white');
+    const pipColorClass = isWhite ? (WHITE_PIP_COLORS[v] || '') : '';
+    die.innerHTML = '';
+    for (let p = 0; p < 9; p++) {
+      const pip = document.createElement('div');
+      let cls = 'pip';
+      if (!(PIP_MAP[v] && PIP_MAP[v].includes(p))) cls += ' hidden';
+      if (pipColorClass) cls += ' ' + pipColorClass;
+      pip.className = cls;
+      die.appendChild(pip);
+    }
+  });
+}
+
+function randomizeDicePositions() {
+  const positions = [{ top: 6, left: 10 }, { top: 34, left: 52 }, { top: 62, left: 20 }];
+  positions.forEach((pos, i) => {
+    const d = document.getElementById('die'+i);
+    const jt = pos.top + (Math.random()*12 - 6);
+    const jl = pos.left + (Math.random()*12 - 6);
+    const rot = Math.random()*24 - 12;
+    d.style.top = jt + '%';
+    d.style.left = jl + '%';
+    d.style.transform = `rotate(${rot}deg)`;
+  });
+}
+
+/* ═══════════ ВСПОМОГАТЕЛЬНЫЕ ═══════════ */
+/* Текущая ставка, которую можно перебить */
+function currentBet() {
+  if (state.mode === 'coop') return state.turn === 'player' ? state.playerBet : state.botBet;
+  return state.botBet;
+}
+
+function overrideAvailable() {
+  if (state.gameOver || state.locked || state.paused || state.override) return false;
+  if (state.mode === 'coop') return state.awaiting && !!currentBet();
+  return state.turn === 'bot' && !!state.botBet;
+}
+
+function canBet() {
+  if (state.gameOver || state.locked || state.paused) return false;
+  if (state.mode === 'coop') return !state.awaiting;
+  return state.turn === 'player';
+}
+
+/* ═══════════ UI ═══════════ */
+function updateUI() {
+  const coop = state.mode === 'coop';
+
+  document.getElementById('botMoney').textContent    = coop ? state.bank : state.bot.money;
+  document.getElementById('playerMoney').textContent = state.player.money;
+  document.getElementById('p2Money').textContent     = state.bot.money;
+  document.getElementById('bankMoney').textContent   = state.bank;
+
+  const pc = document.getElementById('playerCard');
+  const p2 = document.getElementById('p2Card');
+  pc.classList.toggle('active-turn', coop && state.turn === 'player' && !state.gameOver);
+  p2.classList.toggle('active-turn', coop && state.turn === 'bot' && !state.gameOver);
+
+  const ob = document.getElementById('overrideBtn');
+  const betBtn = document.getElementById('betBtn');
+
+  if (overrideAvailable()) ob.classList.add('active-override');
+  else ob.classList.remove('active-override');
+
+  betBtn.disabled = !canBet();
+  betBtn.style.opacity = betBtn.disabled ? '0.45' : '1';
+}
+
+function showMoneyDelta(target, delta) {
+  if (!delta) return;
+  let cardId;
+  if (target === 'player') cardId = 'playerCard';
+  else cardId = state.mode === 'coop' ? 'p2Card' : 'botRow';
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const el = document.createElement('div');
+  el.className = 'money-float ' + (delta > 0 ? 'plus' : 'minus');
+  el.textContent = (delta > 0 ? '+' : '') + delta + '💰';
+  card.appendChild(el);
+  setTimeout(() => el.remove(), 1500);
+}
+
+/* ═══════════ ТОСТ ═══════════ */
+function toast(text, durationMs) {
+  const t = document.getElementById('toast');
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(toastTimerId); toastTimerId = null;
+  pauseState.toastRemaining = durationMs || 5000;
+  pauseState.toastActive = true;
+  if (!state.paused) {
+    toastTimerId = setTimeout(() => {
+      t.classList.remove('show');
+      pauseState.toastActive = false;
+    }, pauseState.toastRemaining);
+  }
+}
+function pauseToast() { if (!toastTimerId) return; clearTimeout(toastTimerId); toastTimerId = null; }
+function resumeToast() {
+  if (!pauseState.toastActive) return;
+  if (pauseState.toastRemaining <= 0) {
+    document.getElementById('toast').classList.remove('show');
+    pauseState.toastActive = false; return;
+  }
+  const t = document.getElementById('toast');
+  toastTimerId = setTimeout(() => { t.classList.remove('show'); pauseState.toastActive = false; }, pauseState.toastRemaining);
+}
+function hideToast() {
+  clearTimeout(toastTimerId); toastTimerId = null;
+  pauseState.toastActive = false; pauseState.toastRemaining = 0;
+  document.getElementById('toast').classList.remove('show');
+}
+
+/* ═══════════ МОДАЛКИ ═══════════ */
+function closeModal(id) {
+  document.getElementById(id).classList.add('hidden');
+  if (id === 'betModal') document.getElementById('betModalContent').innerHTML = '';
+  if (id === 'overrideModal') { clearInterval(overrideTimerId); overrideTimerId = null; pauseState.overrideRemaining = 0; }
+  if (id === 'playerBetModal') { clearInterval(playerBetTimerId); playerBetTimerId = null; pauseState.playerBetRemaining = 0; }
+}
+
+/* ═══════════ ПРАВИЛА ═══════════ */
+function openRules() {
+  state.rulesOpen = true;
+  hideToast();
+  if (!state.paused) togglePause(true, true);
+
+  const m = document.getElementById('rulesModalContent');
+  m.innerHTML = `
+    <div class="r-title">ПРАВИЛА ИГРЫ</div>
+    <div class="r-body">
+      <p>• Стартовый капитал — 15€</p>
+      <p>• Существует три вида ставок:</p>
+      <ul>
+        <li>на число</li>
+        <li>на число и цвет</li>
+        <li>на комбинацию чисел</li>
+      </ul>
+      <p>• Существует перебив, то есть встречная ставка.</p>
+      <p>• При выпадении шестёрки на всех кубиках приходит демон и забирает у игроков по 6€.</p>
+      <p>• Игра заканчивается, когда у одного (или у всех) из игроков заканчиваются деньги, либо когда банк разоряется.</p>
+
+      <div class="r-h">Ставка на число</div>
+      <p>Игрок ставит любую сумму на число от 1 до 6. Если это число <b>выпало</b> хотя бы на одно число – игрок забирает свою ставку из банка. Если <b>нет</b> – игрок отдаёт банку сумму своей ставки на 1€ больше.</p>
+
+      <div class="r-h">Ставка на число и цвет</div>
+      <p>Игрок ставит сумму на конкретное число и конкретный цвет. Если эта комбинация <b>выпала</b> – игрок берет свою ставку из банка, а другой игрок даёт ему эту ставку на 1€ больше. Если <b>нет</b> – игрок отдаёт свою ставку банку, а другому игроку на 1€ больше.</p>
+
+      <div class="r-h">Ставка на комбинацию чисел</div>
+      <p>Игрок может поставить на комбинацию двух или более чисел. Комбинация считается выпавшей, если <b>каждое</b> из выбранных чисел есть на каких-либо кубиках (с учётом количества повторов). При <b>выигрыше</b> – банк выплачивает игроку его ставку на 2€ больше. При <b>проигрыше</b> – игрок отдаёт банку и сопернику сумму своей ставки.</p>
+
+      <div class="r-h">Перебив</div>
+      <p>Один игрок (А) делает ставку. Другой (В) может перебить её, поставив на то, что игроку (А) не выпадет его ставка. Если игрок (А) <b>выигрывает</b> – он берёт свою ставку из банка, а игрок (В) отдаёт ему свою ставку перебива. Если игрок (А) <b>проигрывает</b> — он отдаёт свою ставку банку, а ставку перебива игрока (В) отдаёт этому игроку (В).</p>
+
+      <p style="margin-top:10px;"><b>И помните, что в этой игре нет победителей. Кроме банка конечно же.</b></p>
+
+      <div class="r-small">Создатели: Настя Чистая и Ася Сорокина, а ещё дипсик и клауд ии</div>
+    </div>
+    <div class="r-footer">
+      <button class="r-close" onclick="closeRules()">Продолжить игру</button>
+    </div>
+  `;
+  document.getElementById('rulesModal').classList.remove('hidden');
+}
+
+function closeRules() {
+  document.getElementById('rulesModal').classList.add('hidden');
+  state.rulesOpen = false;
+  if (state.paused) togglePause(false, true);
+}
+
+/* ═══════════ ПАУЗА ═══════════ */
+function onPauseClick() {
+  if (state.gameOver) return;
+  if (!state.paused) togglePause(true, true);
+  document.getElementById('pauseModal').classList.remove('hidden');
+}
+
+function closePauseModal() {
+  document.getElementById('pauseModal').classList.add('hidden');
+  if (state.paused) togglePause(false, true);
+}
+
+function exitToMainMenu() {
+  document.getElementById('pauseModal').classList.add('hidden');
+  if (state.paused) togglePause(false, true);
+  restartGame();
+}
+
+function togglePause(forceState, silent) {
+  const newState = (typeof forceState === 'boolean') ? forceState : !state.paused;
+  state.paused = newState;
+  const btn = document.getElementById('pauseBtn');
+  btn.textContent = state.paused ? '▶️' : '⏸️';
+  btn.title = state.paused ? 'Продолжить' : 'Пауза';
+  const overlay = document.getElementById('pauseOverlay');
+  if (state.paused) overlay.classList.add('active'); else overlay.classList.remove('active');
+  if (state.paused) {
+    pauseTimer('bot'); pauseTimer('override'); pauseTimer('playerBet'); pauseToast();
+    if (!silent) toast('⏸️ Пауза', 1500);
+  } else {
+    resumeTimer('bot'); resumeTimer('override'); resumeTimer('playerBet'); resumeToast();
+    if (!silent) toast('▶️ Продолжаем', 1500);
+  }
+  updateUI();
+}
+
+function pauseTimer(kind) {
+  if (kind === 'bot') { if (!botTimerId) return; clearInterval(botTimerId); botTimerId = null; }
+  else if (kind === 'override') { if (!overrideTimerId) return; clearInterval(overrideTimerId); overrideTimerId = null; }
+  else if (kind === 'playerBet') { if (!playerBetTimerId) return; clearInterval(playerBetTimerId); playerBetTimerId = null; }
+}
+function resumeTimer(kind) {
+  if (kind === 'bot') {
+    if (botTimerId || pauseState.botRemaining <= 0) return;
+    startBotTimerLoop(pauseState.botRemaining, pauseState.botTotal, pauseState.botOnExpire);
+  } else if (kind === 'override') {
+    if (overrideTimerId || pauseState.overrideRemaining <= 0) return;
+    startOverrideTimerLoop(pauseState.overrideRemaining, pauseState.overrideTotal, pauseState.overrideOnExpire);
+  } else if (kind === 'playerBet') {
+    if (playerBetTimerId || pauseState.playerBetRemaining <= 0) return;
+    startPlayerBetTimerLoop(pauseState.playerBetRemaining, pauseState.playerBetTotal, pauseState.playerBetOnExpire);
+  }
+}
+
+/* ═══════════ РЕЖИМ С БОТОМ: ход игрока ═══════════ */
+function playerFinishesTurn() {
+  state.locked = true;
+  updateUI();
+
+  botMaybeOverridePlayerBet(() => {
+    state.playerBet = null;
+    state.turn = 'bot';
+    state.locked = false;
+    updateUI();
+    setTimeout(botStartsTurn, 600);
+  });
+}
+
+/* ═══════════ БОТ ПЕРЕБИВАЕТ ИГРОКА ═══════════ */
+function botMaybeOverridePlayerBet(onDone) {
+  const pb = state.playerBet;
+  if (!pb || state.gameOver) { onDone(); return; }
+
+  const wantOverride = Math.random() < 0.3;
+  if (!wantOverride) { finishPlayerTurnWithoutBotOverride(onDone); return; }
+
+  const botAmount = Math.max(1, Math.min(state.bot.money, pb.amount));
+  const targetText = describePlayerBetForOverride(pb);
+
+  const modalContent = document.getElementById('playerBetModalContent');
+  modalContent.innerHTML = `
+    <h2>🤖 Бот думает...</h2>
+    <div class="timer-container" style="margin-bottom: 14px;">
+      <div class="timer-info" style="color:#fff;">
+        <span>Решает, перебить ли ставку:</span>
+        <span id="pBetTimerSec">4 сек</span>
+      </div>
+      <div class="timer-bar-bg"><div id="pBetTimerBar" class="timer-bar-fill"></div></div>
+    </div>
+    <p style="text-align:center;font-size:15px;line-height:1.5;">
+      Ваша ставка: <b>${describeBet(pb)}</b> (${pb.amount}💰)
+    </p>
+  `;
+  document.getElementById('playerBetModal').classList.remove('hidden');
+
+  startPlayerBetTimer(4, () => {
+    closeModal('playerBetModal');
+    state.botOverride = { amount: botAmount, playerBet: pb };
+    playRobotBeep();
+    showBotBubble(`Перебив! Ставлю ${botAmount}💰, что тебе НЕ выпадет ${targetText}.`, 5, () => {
+      hideBotBubble();
+      state.locked = true;
+      updateUI();
+      rollDice(() => {
+        resolvePlayerBet();
+        resolveBotOverride();
+        updateUI();
+        if (checkGameOver()) return;
+        state.botOverride = null;
+        onDone();
+      });
+    });
+  });
+}
+
+function describePlayerBetForOverride(pb) {
+  if (pb.type === 'number') return `число ${pb.value}`;
+  if (pb.type === 'color')  return `${colorName(pb.color)}+${pb.number}`;
+  if (pb.type === 'combo')  return `[${pb.values.join(', ')}]`;
+  return '—';
+}
+
+function startPlayerBetTimer(durationSec, onExpire) {
+  const totalMs = durationSec * 1000;
+  if (state.paused) {
+    pauseState.playerBetTotal = totalMs;
+    pauseState.playerBetRemaining = totalMs;
+    pauseState.playerBetOnExpire = onExpire;
+    return;
+  }
+  startPlayerBetTimerLoop(totalMs, totalMs, onExpire);
+}
+
+function startPlayerBetTimerLoop(remainingMs, totalMs, onExpire) {
+  clearInterval(playerBetTimerId);
+  const timerSec = document.getElementById('pBetTimerSec');
+  const timerBar = document.getElementById('pBetTimerBar');
+  pauseState.playerBetTotal = totalMs;
+  pauseState.playerBetRemaining = remainingMs;
+  pauseState.playerBetOnExpire = onExpire;
+  if (timerSec) timerSec.textContent = `${Math.max(0, Math.ceil(remainingMs/1000))} сек`;
+  if (timerBar) timerBar.style.width = `${(Math.max(0,remainingMs) / totalMs) * 100}%`;
+  playerBetTimerId = setInterval(() => {
+    if (state.paused) return;
+    pauseState.playerBetRemaining -= 100;
+    if (timerSec) timerSec.textContent = `${Math.max(0, Math.ceil(pauseState.playerBetRemaining/1000))} сек`;
+    if (timerBar) timerBar.style.width = `${(Math.max(0,pauseState.playerBetRemaining) / totalMs) * 100}%`;
+    if (pauseState.playerBetRemaining <= 0) {
+      clearInterval(playerBetTimerId); playerBetTimerId = null; onExpire();
+    }
+  }, 100);
+}
+
+function finishPlayerTurnWithoutBotOverride(onDone) {
+  state.locked = true;
+  updateUI();
+  rollDice(() => {
+    resolvePlayerBet();
+    updateUI();
+    if (checkGameOver()) return;
+    onDone();
+  });
+}
+
+/* ═══════════ ХОД БОТА ═══════════ */
+function botStartsTurn() {
+  if (state.gameOver) return;
+  const types = ['number','number','color','combo'];
+  const type = types[Math.floor(Math.random()*types.length)];
+  const maxBet = Math.max(1, Math.min(3, Math.max(1, state.bot.money)));
+  const amount = 1 + Math.floor(Math.random() * maxBet);
+  const bet = { amount, type };
+  if (type === 'number') bet.value = 1 + Math.floor(Math.random()*6);
+  else if (type === 'color') { bet.color = state.colors[Math.floor(Math.random()*3)]; bet.number = 1 + Math.floor(Math.random()*6); }
+  else if (type === 'combo') { const count = 2 + Math.floor(Math.random()*2); bet.values = []; for (let i = 0; i < count; i++) bet.values.push(1 + Math.floor(Math.random()*6)); }
+  state.botBet = bet;
+  const speech = `Ставлю ${amount}💰 на ${betPhrase(bet)}. Перебьёшь?`;
+  showBotBubble(speech, 5, () => { hideBotBubble(); botExecutesRoll(); });
+  updateUI();
+}
+
+function botExecutesRoll() {
+  state.locked = true;
+  updateUI();
+  rollDice(() => {
+    resolveBotBet();
+    resolveOverride();
+    updateUI();
+    if (checkGameOver()) return;
+    state.botBet = null;
+    state.override = null;
+    state.turn = 'player';
+    state.locked = false;
+    updateUI();
+    toast(`Ваш ход!`, 5000);
+  });
+}
+
+/* ═══════════ КООПЕРАТИВ: ставка → бабл → перебив → бросок ═══════════ */
+function coopBetPlaced() {
+  const key = state.turn;
+  const otherKey = key === 'player' ? 'bot' : 'player';
+  const b = key === 'player' ? state.playerBet : state.botBet;
+  const me = state[key], op = state[otherKey];
+
+  document.getElementById('coopBubble').classList.toggle('for-p2', key === 'bot');
+  state.awaiting = true;
+  updateUI();
+
+  showBotBubble(
+    `${me.name}: ставлю ${b.amount}💰 на ${betPhrase(b)}. ${op.name}, перебьёшь?`,
+    5,
+    () => { hideBotBubble(); coopRoll(); }
+  );
+}
+
+function coopRoll() {
+  hideBotBubble();
+  state.awaiting = false;
+  state.locked = true;
+  updateUI();
+  const key = state.turn;
+  rollDice(() => {
+    resolveBetFor(key);
+    resolveOverride();
+    updateUI();
+    if (checkGameOver()) return;
+    state.playerBet = null;
+    state.botBet = null;
+    state.override = null;
+    state.turn = key === 'player' ? 'bot' : 'player';
+    state.locked = false;
+    updateUI();
+    toast(`Ход ${state[state.turn].name}!`, 4000);
+  });
+}
+
+function betPhrase(b) {
+  if (!b) return '—';
+  if (b.type === 'number') return `число ${b.value}`;
+  if (b.type === 'color')  return `${b.number} ${colorName(b.color)}`;
+  if (b.type === 'combo')  return `комбинацию [${b.values.join(', ')}]`;
+  return '—';
+}
+
+/* ═══════════ БАБЛ (бот — сверху, кооператив — над карточкой игрока) ═══════════ */
+function bubbleEls() {
+  return state.mode === 'coop'
+    ? { bubble: 'coopBubble', text: 'coopSpeechText', sec: 'coopTimerSec', bar: 'coopTimerBar' }
+    : { bubble: 'botBubble',  text: 'botSpeechText',  sec: 'botTimerSec',  bar: 'botTimerBar' };
+}
+
+function showBotBubble(text, durationSec, onExpire) {
+  const els = bubbleEls();
+  const bubble = document.getElementById(els.bubble);
+  const speechText = document.getElementById(els.text);
+  speechText.textContent = text;
+  bubble.style.display = 'flex';
+  const totalMs = durationSec * 1000;
+  if (state.paused) {
+    pauseState.botTotal = totalMs;
+    pauseState.botRemaining = totalMs;
+    pauseState.botOnExpire = onExpire;
+    document.getElementById(els.sec).textContent = `${Math.ceil(totalMs/1000)} сек`;
+    document.getElementById(els.bar).style.width = '100%';
+    return;
+  }
+  startBotTimerLoop(totalMs, totalMs, onExpire);
+}
+
+function startBotTimerLoop(remainingMs, totalMs, onExpire) {
+  clearInterval(botTimerId);
+  const els = bubbleEls();
+  const timerSec = document.getElementById(els.sec);
+  const timerBar = document.getElementById(els.bar);
+  pauseState.botTotal = totalMs;
+  pauseState.botRemaining = remainingMs;
+  pauseState.botOnExpire = onExpire;
+  timerSec.textContent = `${Math.max(0, Math.ceil(remainingMs/1000))} сек`;
+  timerBar.style.width = `${(Math.max(0,remainingMs) / totalMs) * 100}%`;
+  botTimerId = setInterval(() => {
+    if (state.paused) return;
+    pauseState.botRemaining -= 100;
+    timerSec.textContent = `${Math.max(0, Math.ceil(pauseState.botRemaining/1000))} сек`;
+    timerBar.style.width = `${(Math.max(0,pauseState.botRemaining) / totalMs) * 100}%`;
+    if (pauseState.botRemaining <= 0) {
+      clearInterval(botTimerId); botTimerId = null; onExpire();
+    }
+  }, 100);
+}
+
+function hideBotBubble() {
+  clearInterval(botTimerId); botTimerId = null;
+  pauseState.botRemaining = 0;
+  document.getElementById('botBubble').style.display = 'none';
+  document.getElementById('coopBubble').style.display = 'none';
+}
+
+function describeBet(b) {
+  if (!b) return '—';
+  if (b.type === 'number') return `число ${b.value}`;
+  if (b.type === 'color')  return `${colorName(b.color)} + ${b.number}`;
+  if (b.type === 'combo')  return `комбинацию [${b.values.join(', ')}]`;
+  return '—';
+}
+
+function colorName(c) {
+  return c === 'blue' ? 'синий' : c === 'orange' ? 'оранжевый' : 'белый';
+}
+
+/* ═══════════ МОДАЛКА СТАВКИ ═══════════ */
+let pickedCombo = [];
+let pickedNum = null;
+
+function openBetMenu() {
+  if (!canBet()) return;
+  const title = state.mode === 'coop' ? `🎲 Ставка: ${state[state.turn].name}` : 'Сделать ставку';
+  const m = document.getElementById('betModalContent');
+  m.innerHTML = `
+    <h2>${title}</h2>
+    <button class="choice" onclick="betNumberUI()">🎯 На число</button>
+    <button class="choice" onclick="betColorUI()">🎨 На цвет + число</button>
+    <button class="choice" onclick="betComboUI()">🔢 Комбинация 2–3 чисел</button>
+    <button class="cancel" style="width:100%;padding:12px;border-radius:10px;border:none;margin-top:8px;font-weight:700;cursor:pointer;"
+            onclick="closeModal('betModal')">Отмена</button>
+  `;
+  document.getElementById('betModal').classList.remove('hidden');
+}
+
+function betNumberUI() {
+  const m = document.getElementById('betModalContent');
+  m.innerHTML = `
+    <h2>Ставка на число</h2>
+    <label>Какое число выпадет хотя бы на одном кубике?</label>
+    <div class="num-grid" id="numGrid"></div>
+    <label>Сумма ставки:</label>
+    <div class="number-input-wrapper">
+      <button class="num-btn" onclick="adjustInput('betAmt', -1)">-</button>
+      <input type="number" id="betAmt" value="1" min="1">
+      <button class="num-btn" onclick="adjustInput('betAmt', 1)">+</button>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel" onclick="openBetMenu()">Назад</button>
+      <button class="confirm" onclick="confirmNumberBet()">Поставить</button>
+    </div>`;
+  buildNumGrid('numGrid', 'single');
+}
+
+function betColorUI() {
+  const m = document.getElementById('betModalContent');
+  m.innerHTML = `
+    <h2>Ставка на цвет + число</h2>
+    <label>Цвет кубика:</label>
+    <select id="betColorSel">
+      <option value="white">⚪ Белый</option>
+      <option value="blue">🔵 Синий</option>
+      <option value="orange">🟠 Оранжевый</option>
+    </select>
+    <label>Число на этом кубике:</label>
+    <select id="betColorNum">
+      <option>1</option><option>2</option><option>3</option>
+      <option>4</option><option>5</option><option>6</option>
+    </select>
+    <label>Сумма ставки:</label>
+    <div class="number-input-wrapper">
+      <button class="num-btn" onclick="adjustInput('betAmt', -1)">-</button>
+      <input type="number" id="betAmt" value="1" min="1">
+      <button class="num-btn" onclick="adjustInput('betAmt', 1)">+</button>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel" onclick="openBetMenu()">Назад</button>
+      <button class="confirm" onclick="confirmColorBet()">Поставить</button>
+    </div>`;
+}
+
+function betComboUI() {
+  const m = document.getElementById('betModalContent');
+  m.innerHTML = `
+    <h2>Ставка на комбинацию</h2>
+    <label>Нажимайте на числа, чтобы выбрать до 3 штук. Повторы разрешены:</label>
+    <div class="num-grid" id="comboGrid"></div>
+    <div id="comboPreview" style="margin-top:8px;font-size:14px;opacity:0.85;text-align:center;">
+      Выбрано: <b id="comboPreviewText">—</b>
+    </div>
+    <button class="reset-combo-btn" onclick="resetCombo()">✖ Сбросить выбор</button>
+    <label>Сумма ставки:</label>
+    <div class="number-input-wrapper">
+      <button class="num-btn" onclick="adjustInput('betAmt', -1)">-</button>
+      <input type="number" id="betAmt" value="1" min="1">
+      <button class="num-btn" onclick="adjustInput('betAmt', 1)">+</button>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel" onclick="openBetMenu()">Назад</button>
+      <button class="confirm" onclick="confirmComboBet()">Поставить</button>
+    </div>`;
+  buildNumGrid('comboGrid', 'multi');
+}
+
+function adjustInput(id, delta) {
+  const inp = document.getElementById(id);
+  if (!inp) return;
+  let val = parseInt(inp.value) || 1;
+  val = Math.max(1, val + delta);
+  inp.value = val;
+}
+
+function buildNumGrid(gridId, multi) {
+  const grid = document.getElementById(gridId);
+  grid.innerHTML = '';
+  pickedCombo = [];
+  pickedNum = null;
+  for (let n = 1; n <= 6; n++) {
+    const b = document.createElement('button');
+    b.textContent = n;
+    b.dataset.num = n;
+    if (multi === 'multi') {
+      const badge = document.createElement('span');
+      badge.className = 'cnt-badge';
+      badge.style.display = 'none';
+      b.appendChild(badge);
+    }
+    b.onclick = () => {
+      if (multi === 'multi') {
+        if (pickedCombo.length >= 3) { toast('Максимум 3 числа в комбинации', 2000); return; }
+        pickedCombo.push(n);
+        updateComboBadges(grid, multi);
+      } else {
+        pickedNum = n;
+        [...grid.children].forEach(c => c.classList.remove('sel'));
+        b.classList.add('sel');
+      }
+    };
+    grid.appendChild(b);
+  }
+  if (multi === 'multi') updateComboBadges(grid, multi);
+}
+
+function resetCombo() {
+  pickedCombo = [];
+  const grid = document.querySelector('.modal-bg:not(.hidden) #ovGrid')
+            || document.querySelector('.modal-bg:not(.hidden) #comboGrid');
+  if (grid) updateComboBadges(grid, 'multi');
+}
+
+function updateComboBadges(grid, multi) {
+  [...grid.children].forEach(b => {
+    const n = parseInt(b.dataset.num);
+    const cnt = pickedCombo.filter(x => x === n).length;
+    const badge = b.querySelector('.cnt-badge');
+    if (cnt > 0) { b.classList.add('sel'); if (badge) { badge.style.display = 'flex'; badge.textContent = cnt; } }
+    else { b.classList.remove('sel'); if (badge) badge.style.display = 'none'; }
+  });
+  const scope = grid.closest('.modal') || document;
+  const prev = scope.querySelector('#comboPreviewText');
+  if (prev) prev.textContent = pickedCombo.length ? `[${[...pickedCombo].sort((a,b)=>a-b).join(', ')}]` : '—';
+}
+
+/* Общая отправка ставки: coop → бабл над картой игрока; bot → как раньше */
+function submitBet(bet, botModeToast) {
+  closeModal('betModal');
+  if (state.mode === 'coop') {
+    if (state.turn === 'player') state.playerBet = bet; else state.botBet = bet;
+    coopBetPlaced();
+  } else {
+    state.playerBet = bet;
+    toast(botModeToast, 5000);
+    playerFinishesTurn();
+  }
+}
+
+function confirmNumberBet() {
+  if (!pickedNum) { toast('Выберите число!', 2000); return; }
+  const amount = parseInt(document.getElementById('betAmt').value);
+  if (!amount || amount < 1) { toast('Сумма должна быть ≥ 1', 2000); return; }
+  submitBet({ type: 'number', value: pickedNum, amount },
+    `🎯 ${state.player.name} поставил ${amount}💰 на число ${pickedNum}`);
+}
+
+function confirmColorBet() {
+  const color = document.getElementById('betColorSel').value;
+  const number = parseInt(document.getElementById('betColorNum').value);
+  const amount = parseInt(document.getElementById('betAmt').value);
+  if (!amount || amount < 1) { toast('Сумма должна быть ≥ 1', 2000); return; }
+  submitBet({ type: 'color', color, number, amount },
+    `🎨 ${state.player.name} поставил ${amount}💰 на ${colorName(color)}+${number}`);
+}
+
+function confirmComboBet() {
+  if (pickedCombo.length < 2) { toast('Выберите 2 или 3 числа!', 2000); return; }
+  const amount = parseInt(document.getElementById('betAmt').value);
+  if (!amount || amount < 1) { toast('Сумма должна быть ≥ 1', 2000); return; }
+  submitBet({ type: 'combo', values: [...pickedCombo], amount },
+    `🔢 ${state.player.name} поставил ${amount}💰 на [${[...pickedCombo].join(', ')}]`);
+}
+
+/* ═══════════ ПЕРЕБИВ (бот и кооператив) ═══════════ */
+function onOverrideClick() {
+  if (!overrideAvailable()) return;
+  hideBotBubble();
+  const modal = document.getElementById('overrideModal');
+  modal.classList.remove('hidden');
+  startOverrideTimer(10, () => {
+    closeModal('overrideModal');
+    toast(`Время на перебив истекло!`, 3000);
+    proceedToRoll();
+  });
+  openOverrideMenu();
+}
+
+function proceedToRoll() {
+  if (state.mode === 'bot') botExecutesRoll(); else coopRoll();
+}
+
+function startOverrideTimer(durationSec, onExpire) {
+  const totalMs = durationSec * 1000;
+  if (state.paused) {
+    pauseState.overrideTotal = totalMs;
+    pauseState.overrideRemaining = totalMs;
+    pauseState.overrideOnExpire = onExpire;
+    return;
+  }
+  startOverrideTimerLoop(totalMs, totalMs, onExpire);
+}
+
+function startOverrideTimerLoop(remainingMs, totalMs, onExpire) {
+  clearInterval(overrideTimerId);
+  const timerSec = document.getElementById('overrideTimerSec');
+  const timerBar = document.getElementById('overrideTimerBar');
+  pauseState.overrideTotal = totalMs;
+  pauseState.overrideRemaining = remainingMs;
+  pauseState.overrideOnExpire = onExpire;
+  timerSec.textContent = `${Math.max(0, Math.ceil(remainingMs/1000))} сек`;
+  timerBar.style.width = `${(Math.max(0,remainingMs) / totalMs) * 100}%`;
+  overrideTimerId = setInterval(() => {
+    if (state.paused) return;
+    pauseState.overrideRemaining -= 100;
+    timerSec.textContent = `${Math.max(0, Math.ceil(pauseState.overrideRemaining/1000))} сек`;
+    timerBar.style.width = `${(Math.max(0,pauseState.overrideRemaining) / totalMs) * 100}%`;
+    if (pauseState.overrideRemaining <= 0) {
+      clearInterval(overrideTimerId); overrideTimerId = null; onExpire();
+    }
+  }, 100);
+}
+
+function openOverrideMenu() {
+  const b = currentBet();
+  const coop = state.mode === 'coop';
+  const bettorName = coop ? state[state.turn].name : 'Соперник';
+  const overName = coop ? state[state.turn === 'player' ? 'bot' : 'player'].name : '';
+  const title = coop ? `⚔️ Перебивает ${overName}` : 'Перебив ставки';
+  const body = document.getElementById('overrideBody');
+  let optionsHTML = '';
+  if (b.type === 'color') {
+    optionsHTML = `
+      <button class="choice" onclick="overrideAmtUI('number')">Перебить ЧИСЛО (${b.number})</button>
+      <button class="choice" onclick="overrideAmtUI('color')">Перебить ЦВЕТ (${colorName(b.color)})</button>
+      <button class="choice" onclick="overrideAmtUI('all')">Перебить ВСЁ (${colorName(b.color)}+${b.number})</button>`;
+  } else if (b.type === 'number') {
+    optionsHTML = `<button class="choice" onclick="overrideAmtUI('number')">Перебить число ${b.value}</button>`;
+  } else if (b.type === 'combo') {
+    optionsHTML = `<button class="choice" onclick="overrideComboUI()">Выбрать числа для перебива</button>`;
+  }
+  body.innerHTML = `
+    <h2>${title}</h2>
+    <p style="text-align:center;margin-bottom:12px;font-size:15px;line-height:1.4;">
+      ${bettorName} поставил: <b>${describeBet(b)}</b> (${b.amount}💰)<br>
+      <small style="opacity:0.8;">Вы ставите на то, что это НЕ выпадет!</small>
+    </p>
+    ${optionsHTML}
+    <button class="cancel" style="width:100%;padding:12px;border-radius:10px;border:none;margin-top:8px;font-weight:700;cursor:pointer;"
+            onclick="cancelOverrideAction()">Пропустить перебив</button>
+  `;
+}
+
+function cancelOverrideAction() {
+  closeModal('overrideModal');
+  proceedToRoll();
+}
+
+function overrideWho() {
+  return state.mode === 'coop' ? `«${state[state.turn].name}»` : 'соперника';
+}
+
+function overrideAmtUI(mode) {
+  const body = document.getElementById('overrideBody');
+  body.innerHTML = `
+    <h2>Сумма перебива</h2>
+    <label>Сколько ставите, что ставка ${overrideWho()} НЕ выпадет?</label>
+    <div class="number-input-wrapper">
+      <button class="num-btn" onclick="adjustInput('ovAmt', -1)">-</button>
+      <input type="number" id="ovAmt" value="1" min="1">
+      <button class="num-btn" onclick="adjustInput('ovAmt', 1)">+</button>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel" onclick="openOverrideMenu()">Назад</button>
+      <button class="confirm" onclick="overrideConfirm('${mode}')">Подтвердить</button>
+    </div>`;
+}
+
+function overrideComboUI() {
+  const body = document.getElementById('overrideBody');
+  body.innerHTML = `
+    <h2>Перебив комбинации</h2>
+    <label>Выберите числа, которые НЕ выпадут (ставка ${overrideWho()}: [${currentBet().values.join(', ')}]):</label>
+    <div class="num-grid" id="ovGrid"></div>
+    <div id="comboPreview" style="margin-top:8px;font-size:14px;opacity:0.85;text-align:center;">
+      Выбрано: <b id="comboPreviewText">—</b>
+    </div>
+    <button class="reset-combo-btn" onclick="resetCombo()">✖ Сбросить выбор</button>
+    <label>Сумма ставки:</label>
+    <div class="number-input-wrapper">
+      <button class="num-btn" onclick="adjustInput('ovAmt', -1)">-</button>
+      <input type="number" id="ovAmt" value="1" min="1">
+      <button class="num-btn" onclick="adjustInput('ovAmt', 1)">+</button>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel" onclick="openOverrideMenu()">Назад</button>
+      <button class="confirm" onclick="overrideConfirm('combo')">Подтвердить</button>
+    </div>`;
+  buildNumGrid('ovGrid', 'multi');
+}
+
+function overrideConfirm(mode) {
+  const amtEl = document.getElementById('ovAmt');
+  const amount = parseInt(amtEl.value);
+  if (!amount || amount < 1) { toast('Сумма должна быть ≥ 1', 2000); return; }
+  const b = currentBet();
+  let target = {};
+  if (mode === 'number') target = { kind: 'number', value: b.value || b.number };
+  else if (mode === 'color') target = { kind: 'color', value: b.color };
+  else if (mode === 'all') target = { kind: 'all', color: b.color, number: b.number };
+  else if (mode === 'combo') {
+    if (pickedCombo.length < 1) { toast('Выберите хотя бы одно число', 2000); return; }
+    target = { kind: 'combo', values: [...pickedCombo] };
+  }
+  state.override = { amount, target };
+  closeModal('overrideModal');
+  toast(`⚔️ Перебив принят! Ставка: ${amount}💰`, 3000);
+  proceedToRoll();
+}
+
+/* ═══════════ БРОСОК КУБИКОВ ═══════════ */
+function rollDice(onComplete) {
+  let ticks = 0;
+  const totalTicks = 10;
+  const finalValues = cheatCombo ? [...cheatCombo] : [1,2,3].map(() => 1 + Math.floor(Math.random()*6));
+  cheatCombo = null;
+  const interval = setInterval(() => {
+    if (state.paused) return;
+    const tempVals = [1,2,3].map(() => 1 + Math.floor(Math.random()*6));
+    renderDice(tempVals);
+    randomizeDicePositions();
+    const intensity = 0.5 + 0.5 * (ticks / totalTicks);
+    playDiceSound(intensity);
+    ticks++;
+    if (ticks >= totalTicks) {
+      clearInterval(interval);
+      state.dice = finalValues;
+      renderDice(state.dice);
+      randomizeDicePositions();
+      playDiceFinalSound();
+      if (state.dice.every(d => d === 6)) {
+        state.player.money -= 6;
+        state.bot.money    -= 6;
+        showMoneyDelta('player', -6);
+        showMoneyDelta('bot', -6);
+        updateUI();
+        playDemonSound();
+        toast('😈 ДЕМОН! Пришел демон и забрал у всех по 6💰!', 6000);
+        const pNeg = state.player.money < 0;
+        const bNeg = state.bot.money < 0;
+        if (pNeg || bNeg) {
+          state.gameOver = true;
+          state.locked = true;
+          updateUI();
+          setTimeout(() => {
+            if (pNeg && bNeg)   showEndGame('demon_both');
+            else if (pNeg)      showEndGame('demon_player');
+            else                showEndGame('demon_bot');
+          }, 900);
+          return;
+        }
+      }
+      setTimeout(onComplete, 500);
+    }
+  }, 70);
+}
+
+/* ═══════════ РАСЧЁТЫ ═══════════ */
+function countHits(n) { return state.dice.filter(d => d === n).length; }
+
+function comboHits(values) {
+  const required = {};
+  values.forEach(v => { required[v] = (required[v] || 0) + 1; });
+  for (const num in required) {
+    if (countHits(parseInt(num)) < required[num]) return false;
+  }
+  return true;
+}
+
+function isBetHit(bet) {
+  if (!bet) return false;
+  if (bet.type === 'number') return countHits(bet.value) > 0;
+  if (bet.type === 'color') {
+    const idx = state.colors.indexOf(bet.color);
+    return state.dice[idx] === bet.number;
+  }
+  if (bet.type === 'combo') return comboHits(bet.values);
+  return false;
+}
+
+/* Универсальный расчёт ставки для 'player' или 'bot' (в кооперативе — Игрок 1 / Игрок 2) */
+function resolveBetFor(key) {
+  const otherKey = key === 'player' ? 'bot' : 'player';
+  const b = key === 'player' ? state.playerBet : state.botBet;
+  if (!b) return;
+  const me = state[key];
+  const op = state[otherKey];
+
+  if (b.type === 'number') {
+    if (isBetHit(b)) {
+      const taken = Math.min(b.amount, state.bank);
+      state.bank -= taken;
+      me.money += taken;
+      showMoneyDelta(key, taken);
+      toast(`🎉 ${me.name} угадал число! Банк выплатил ${taken}💰`, 5000);
+    } else {
+      const penalty = b.amount + 1;
+      me.money -= penalty;
+      state.bank += penalty;
+      showMoneyDelta(key, -penalty);
+      toast(`❌ ${me.name} не угадал число. Отдал банку ${penalty}💰`, 5000);
+    }
+  } else if (b.type === 'color') {
+    if (isBetHit(b)) {
+      const takenFromBank = Math.min(b.amount, state.bank);
+      state.bank -= takenFromBank;
+      me.money += takenFromBank;
+      const fromOther = b.amount + 1;
+      op.money -= fromOther;
+      me.money += fromOther;
+      showMoneyDelta(key, takenFromBank + fromOther);
+      showMoneyDelta(otherKey, -fromOther);
+      toast(`🎉 ${me.name} угадал цвет+число! Банк дал ${takenFromBank}💰, ${op.name} отдал ${fromOther}💰`, 5000);
+    } else {
+      const toBank = b.amount;
+      me.money -= toBank;
+      state.bank += toBank;
+      const toOther = b.amount + 1;
+      me.money -= toOther;
+      op.money += toOther;
+      showMoneyDelta(key, -(toBank + toOther));
+      showMoneyDelta(otherKey, toOther);
+      toast(`❌ ${me.name} не угадал. Банку ${toBank}💰, ${op.name} получил ${toOther}💰`, 5000);
+    }
+  } else if (b.type === 'combo') {
+    if (isBetHit(b)) {
+      const payout = b.amount + 2;
+      const taken = Math.min(payout, state.bank);
+      state.bank -= taken;
+      me.money += taken;
+      showMoneyDelta(key, taken);
+      toast(`🎉 Комбинация ${me.name} выпала! Банк выплатил ${taken}💰`, 5000);
+    } else {
+      me.money -= b.amount;
+      state.bank += b.amount;
+      me.money -= b.amount;
+      op.money += b.amount;
+      showMoneyDelta(key, -2 * b.amount);
+      showMoneyDelta(otherKey, b.amount);
+      toast(`❌ Комбинация ${me.name} не выпала. Банку и ${op.name} по ${b.amount}💰`, 5000);
+    }
+  }
+}
+
+function resolvePlayerBet() { resolveBetFor('player'); }
+function resolveBotBet()    { resolveBetFor('bot'); }
+
+/* Перебив бота против ставки игрока (только режим с ботом) */
+function resolveBotOverride() {
+  const o = state.botOverride;
+  if (!o) return;
+  const pb = o.playerBet;
+  const playerHit = isBetHit(pb);
+
+  if (playerHit) {
+    state.bot.money -= o.amount;
+    state.player.money += o.amount;
+    showMoneyDelta('player', o.amount);
+    showMoneyDelta('bot', -o.amount);
+    toast(`⚔️ Перебив не сработал! ${state.bot.name} отдал ${state.player.name} ${o.amount}💰`, 5500);
+  } else {
+    state.player.money -= o.amount;
+    state.bot.money += o.amount;
+    showMoneyDelta('player', -o.amount);
+    showMoneyDelta('bot', o.amount);
+    toast(`⚔️ Перебив сработал! ${state.player.name} отдал ${state.bot.name} ${o.amount}💰`, 5500);
+  }
+}
+
+/* Перебив против текущей ставки (бот-режим: игрок перебивает бота; coop: второй игрок перебивает ставящего) */
+function resolveOverride() {
+  const o = state.override;
+  if (!o) return;
+  const bettorKey = state.mode === 'coop' ? state.turn : 'bot';
+  const overKey = bettorKey === 'player' ? 'bot' : 'player';
+  const b = bettorKey === 'player' ? state.playerBet : state.botBet;
+  if (!b) return;
+  const bettor = state[bettorKey];
+  const over = state[overKey];
+
+  let hit = false;
+  if (o.target.kind === 'number') hit = state.dice.includes(o.target.value);
+  else if (o.target.kind === 'color') {
+    const idx = state.colors.indexOf(o.target.value);
+    hit = state.dice[idx] === b.number;
+  } else if (o.target.kind === 'all') {
+    const idx = state.colors.indexOf(o.target.color);
+    hit = state.dice[idx] === o.target.number;
+  } else if (o.target.kind === 'combo') hit = comboHits(o.target.values);
+
+  if (hit) {
+    // Перебив не сработал: перебивающий отдаёт ставку тому, кто ставил
+    over.money -= o.amount;
+    bettor.money += o.amount;
+    showMoneyDelta(overKey, -o.amount);
+    showMoneyDelta(bettorKey, o.amount);
+    toast(`⚔️ Перебив ${over.name} НЕ сработал. ${over.name} отдал ${bettor.name} ${o.amount}💰`, 5500);
+  } else {
+    // Перебив сработал: ставивший отдаёт ставку перебивающему
+    bettor.money -= o.amount;
+    over.money += o.amount;
+    showMoneyDelta(bettorKey, -o.amount);
+    showMoneyDelta(overKey, o.amount);
+    toast(`⚔️ Перебив ${over.name} сработал! ${bettor.name} отдал ${over.name} ${o.amount}💰`, 5500);
+  }
+}
+
+/* ═══════════ ПРОВЕРКА КОНЦА ИГРЫ ═══════════ */
+function checkGameOver() {
+  const pMoney = state.player.money;
+  const bMoney = state.bot.money;
+  if (state.bank <= 0) { state.gameOver = true; showEndGame('bank_empty'); return true; }
+  if (pMoney <= 0 || bMoney <= 0) {
+    state.gameOver = true;
+    if (pMoney <= 0 && bMoney <= 0) showEndGame('both_zero');
+    else if (pMoney <= 0) showEndGame('player_loss');
+    else showEndGame('player_win');
+    return true;
+  }
+  return false;
+}
+
+function showEndGame(reason) {
+  updateUI();
+  if (state.mode === 'coop') { showEndGameCoop(reason); return; }
+
+  const overlay = document.getElementById('endOverlay');
+  const title = document.getElementById('endTitle');
+  const subtitle = document.getElementById('endSubtitle');
+  overlay.classList.remove('hidden');
+  const oppName = 'Бот';
+
+  if (reason === 'player_win') {
+    title.textContent = '🎉 ВЫ ПОБЕДИЛИ!';
+    title.style.color = '#FFC60C';
+    subtitle.textContent = `У ${oppName} закончились деньги! Ваш баланс: ${state.player.money}💰`;
+    playVictorySound();
+    triggerConfetti();
+  } else if (reason === 'player_loss') {
+    document.body.classList.add('game-over-loss');
+    title.textContent = 'ВЫ ПРОИГРАЛИ';
+    title.style.color = '#FF4336';
+    subtitle.textContent = `У вас закончились деньги. ${oppName} победил с балансом ${state.bot.money}💰`;
+    playLoseSound();
+  } else if (reason === 'both_zero') {
+    document.body.classList.add('game-over-loss');
+    title.textContent = 'БАНК ПОБЕДИЛ';
+    title.style.color = '#FF4336';
+    subtitle.textContent = 'И у вас, и у соперника закончились средства!';
+    playConfusedSound();
+  } else if (reason === 'bank_empty') {
+    title.textContent = '🏆 ВЫ ПОБЕДИЛИ БАНК!';
+    title.style.color = '#FFC60C';
+    subtitle.textContent = `Банк разорен! ${state.player.name}: ${state.player.money}💰 | ${oppName}: ${state.bot.money}💰`;
+    playJackpotSound();
+    triggerConfetti();
+  } else if (reason === 'demon_both') {
+    document.body.classList.add('game-over-loss');
+    title.textContent = '😈 ДЕМОН РАЗОРИЛ ВСЕХ!';
+    title.style.color = '#FF4336';
+    subtitle.textContent = `Демон забрал по 6💰, и оба ушли в минус. Банк победил!`;
+    playDemonSound();
+  } else if (reason === 'demon_player') {
+    document.body.classList.add('game-over-loss');
+    title.textContent = '😈 ДЕМОН ЗАБРАЛ ВАС!';
+    title.style.color = '#FF4336';
+    subtitle.textContent = `Демон забрал 6💰, и вы ушли в минус. ${oppName} победил!`;
+    playDemonSound();
+  } else if (reason === 'demon_bot') {
+    title.textContent = '😈 ДЕМОН ПОБЕДИЛ СОПЕРНИКА!';
+    title.style.color = '#FFC60C';
+    subtitle.textContent = `Демон забрал 6💰, и соперник ушёл в минус. Вы победили!`;
+    playDemonSound();
+    triggerConfetti();
+  }
+}
+
+/* Экран окончания для кооператива — с именами игроков */
+function showEndGameCoop(reason) {
+  const overlay = document.getElementById('endOverlay');
+  const title = document.getElementById('endTitle');
+  const subtitle = document.getElementById('endSubtitle');
+  overlay.classList.remove('hidden');
+  const p1 = state.player, p2 = state.bot;
+  const balances = `${p1.name}: ${p1.money}💰 | ${p2.name}: ${p2.money}💰`;
+
+  const win = (winner, loser, text) => {
+    title.textContent = `🎉 ПОБЕДИЛ ${winner.name.toUpperCase()}!`;
+    title.style.color = '#FFC60C';
+    subtitle.textContent = `${text.replace('{loser}', loser.name)} ${balances}`;
+    playVictorySound();
+    triggerConfetti();
+  };
+  const bankWins = (t, s, sound) => {
+    document.body.classList.add('game-over-loss');
+    title.textContent = t;
+    title.style.color = '#FF4336';
+    subtitle.textContent = s;
+    sound();
+  };
+
+  if (reason === 'player_win')        win(p1, p2, 'У {loser} закончились деньги!');
+  else if (reason === 'player_loss')  win(p2, p1, 'У {loser} закончились деньги!');
+  else if (reason === 'demon_bot')    win(p1, p2, 'Демон забрал 6💰, и {loser} ушёл в минус.');
+  else if (reason === 'demon_player') win(p2, p1, 'Демон забрал 6💰, и {loser} ушёл в минус.');
+  else if (reason === 'both_zero')    bankWins('БАНК ПОБЕДИЛ', 'У обоих игроков закончились средства!', playConfusedSound);
+  else if (reason === 'demon_both')   bankWins('😈 ДЕМОН РАЗОРИЛ ВСЕХ!', 'Демон забрал по 6💰, и оба ушли в минус. Банк победил!', playDemonSound);
+  else if (reason === 'bank_empty') {
+    title.textContent = '🏆 БАНК РАЗОРЁН!';
+    title.style.color = '#FFC60C';
+    subtitle.textContent = balances;
+    playJackpotSound();
+    triggerConfetti();
+  }
+}
+
+function triggerConfetti() {
+  if (typeof confetti === 'function') {
+    confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+    setTimeout(() => {
+      confetti({ particleCount: 80, angle: 60, spread: 55, origin: { x: 0 } });
+      confetti({ particleCount: 80, angle: 120, spread: 55, origin: { x: 1 } });
+    }, 300);
+  }
+}
+</script>
+</body>
+</html>
