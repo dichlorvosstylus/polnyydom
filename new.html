@@ -1348,7 +1348,9 @@ function botMaybeOverridePlayerBet(onDone) {
   const pb = state.playerBet;
   if (!pb || state.gameOver) { onDone(); return; }
 
-  const wantOverride = Math.random() < 0.3;
+  let overrideChance = 0.3;
+if (pb.type === 'color' || pb.type === 'combo') overrideChance = 0.6;
+const wantOverride = Math.random() < overrideChance;
   if (!wantOverride) { finishPlayerTurnWithoutBotOverride(onDone); return; }
 
   const botAmount = Math.max(1, Math.min(state.bot.money, pb.amount));
