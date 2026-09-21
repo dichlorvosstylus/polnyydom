@@ -1354,40 +1354,21 @@ function botMaybeOverridePlayerBet(onDone) {
   const botAmount = Math.max(1, Math.min(state.bot.money, pb.amount));
   const targetText = describePlayerBetForOverride(pb);
 
-  const modalContent = document.getElementById('playerBetModalContent');
-  modalContent.innerHTML = `
-    <h2>🤖 Бот думает...</h2>
-    <div class="timer-container" style="margin-bottom: 14px;">
-      <div class="timer-info" style="color:#fff;">
-        <span>Решает, перебить ли ставку:</span>
-        <span id="pBetTimerSec">4 сек</span>
-      </div>
-      <div class="timer-bar-bg"><div id="pBetTimerBar" class="timer-bar-fill"></div></div>
-    </div>
-    <p style="text-align:center;font-size:15px;line-height:1.5;">
-      Ваша ставка: <b>${describeBet(pb)}</b> (${pb.amount}💰)
-    </p>
-  `;
-  document.getElementById('playerBetModal').classList.remove('hidden');
-
-  startPlayerBetTimer(4, () => {
-    closeModal('playerBetModal');
-    state.botOverride = { amount: botAmount, playerBet: pb };
-    playRobotBeep();
-    showBotBubble(`Перебив! Ставлю ${botAmount}💰, что тебе НЕ выпадет ${targetText}.`, 5, () => {
-      hideBotBubble();
-      state.locked = true;
-      updateUI();
-      rollDice(() => {
-        resolvePlayerBet();
-        resolveBotOverride();
-        updateUI();
-        if (checkGameOver()) return;
-        state.botOverride = null;
-        onDone();
-      });
-    });
+  state.botOverride = { amount: botAmount, playerBet: pb };
+playRobotBeep();
+showBotBubble(`Перебив! Ставлю ${botAmount}💰, что тебе НЕ выпадет ${targetText}.`, 5, () => {
+  hideBotBubble();
+  state.locked = true;
+  updateUI();
+  rollDice(() => {
+    resolvePlayerBet();
+    resolveBotOverride();
+    updateUI();
+    if (checkGameOver()) return;
+    state.botOverride = null;
+    onDone();
   });
+});
 }
 
 function describePlayerBetForOverride(pb) {
